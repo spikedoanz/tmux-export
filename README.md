@@ -1,52 +1,47 @@
 # tmux-export
 
-Capture tmux pane content and export as txt, tty (ANSI), or html. Works locally and over SSH. Built for sharing LLM agent terminal sessions.
+Capture tmux panes as txt, tty, or html. Works over SSH. Built for sharing LLM agent sessions.
 
-## Install
-
-```
-uvx tmux-export
-```
-
-## Usage
+## Quick start
 
 ```bash
 # Interactive — pick session/window/pane
-tmux-export
-tmux-export user@remote-host
+uvx tmux-export
 
 # Direct
-tmux-export -s my-session -w 0 -p 0
-tmux-export user@host -s my-session -w 0 -p 0
+uvx tmux-export -s my-session -w 0 -p 0
 
-# URI style
-tmux-export host:/tmux/my-session/0/0
+# Remote
+uvx tmux-export user@host -s my-session -w 0 -p 0
 
-# Export only specific formats
-tmux-export -s my-session -w 0 -p 0 -f txt,tty
+# Share via GitHub Gist (requires gh)
+uvx tmux-export -s my-session -w 0 -p 0 --host
 
-# Limit scrollback
-tmux-export -s my-session -w 0 -p 0 --scrollback 500
+# Load export into local tmux window
+uvx tmux-export --load path/to/export.tty
+```
 
-# Share via GitHub Gist (requires gh CLI)
-tmux-export -s my-session -w 0 -p 0 --host
+## Options
 
-# Load an export into a local tmux window
-tmux-export --load ~/.cache/tmux-export/local/my-session/w0p0/20260310-120000.tty
+```
+-s, --session NAME    tmux session name
+-w, --window N        window index
+-p, --pane N          pane index (default 0)
+-f, --format FMT      txt,tty,html,all (default: all)
+--theme THEME         nvim_dark (default), catppuccin_mocha, dracula,
+                      gruvbox_dark, nord, solarized_dark, or gogh:<name>
+--scrollback N        lines of scrollback (default: all)
+--host [PATH]         upload html to GitHub Gist
+--load PATH           replay export in a tmux window
 ```
 
 ## Output
 
-Exports are cached at `~/.cache/tmux-export/<host>/<session>/w<N>p<N>/`:
+Cached at `~/.cache/tmux-export/<host>/<session>/w<N>p<N>/`:
 
-- `.txt` — plain text
-- `.tty` — with ANSI escape codes (colors, attributes)
-- `.html` — rendered terminal view
-- `.toml` — metadata (hostname, dimensions, timestamp, command)
-
-## Requirements
-
-- Python 3.10+
-- `tmux` on the target machine
-- `gh` CLI (optional, for `--host`)
-- `ssh` (optional, for remote capture)
+```
+20260310-120000.txt   # plain text
+20260310-120000.tty   # ANSI escape codes
+20260310-120000.html  # rendered terminal
+20260310-120000.toml  # metadata
+```
