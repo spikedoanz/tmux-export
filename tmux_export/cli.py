@@ -26,7 +26,7 @@ CACHE_DIR = Path.home() / ".cache" / "tmux-export"
 def run_cmd(host, cmd, *, check=True):
     if host:
         remote = " ".join(shlex.quote(c) for c in cmd)
-        full = ["ssh", host, remote]
+        full = ["ssh", host, f"bash -l -c {shlex.quote(remote)}"]
     else:
         full = cmd
     return subprocess.run(full, capture_output=True, text=True, check=check)
@@ -35,7 +35,7 @@ def run_cmd(host, cmd, *, check=True):
 def run_cmd_bytes(host, cmd):
     if host:
         remote = " ".join(shlex.quote(c) for c in cmd)
-        full = ["ssh", host, remote]
+        full = ["ssh", host, f"bash -l -c {shlex.quote(remote)}"]
     else:
         full = cmd
     r = subprocess.run(full, capture_output=True, check=True)
