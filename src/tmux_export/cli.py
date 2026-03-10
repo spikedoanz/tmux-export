@@ -1,7 +1,6 @@
 """tmux-export: capture and export tmux pane content as txt/tty/html."""
 
 import argparse
-import json
 import os
 import re
 import shlex
@@ -110,7 +109,7 @@ def pick(items, prompt):
         print(f"  enter 0-{len(items)-1}")
 
 
-def interactive_pick(host, *, auto_run=False):
+def interactive_pick(host):
     sessions = list_sessions(host)
     if not sessions:
         target = host or "localhost"
@@ -145,15 +144,7 @@ def interactive_pick(host, *, auto_run=False):
     if host_arg:
         host_arg += " "
     direct = f"tmux-export {host_arg}-s {shlex.quote(session)} -w {window} -p {pane}"
-    print(f"\ndirect command:\n  {direct}")
-
-    if not auto_run:
-        try:
-            ans = input("\n[y] to run now, [enter] to just print the command: ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            sys.exit(0)
-        if ans != "y":
-            sys.exit(0)
+    print(f"\nnext time, run:\n  {direct}\n")
 
     return session, window, pane
 
@@ -189,12 +180,57 @@ def write_toml(path, data):
 
 _converter = None
 
-def tty_to_html(tty_bytes):
+TERMINAL_CSS = """\
+html, body {
+  margin: 0; padding: 0;
+  background: #1a1a1a;
+  color: #d4d4d4;
+}
+.terminal-wrap {
+  font-family: 'JetBrains Mono', 'SF Mono', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
+  font-size: 13px;
+  line-height: 1.18;
+  padding: 16px;
+  overflow-x: auto;
+}
+.terminal-wrap .ansi2html-content {
+  white-space: pre;
+}
+.terminal-header {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 11px;
+  color: #888;
+  padding: 8px 16px;
+  border-bottom: 1px solid #333;
+  background: #141414;
+}
+"""
+
+
+def tty_to_html(tty_bytes, title="tmux-export"):
     global _converter
     if _converter is None:
         _converter = Ansi2HTMLConverter(dark_bg=True, scheme="xterm")
     text = tty_bytes.decode("utf-8", errors="replace")
-    return _converter.convert(text).encode("utf-8")
+    body = _converter.convert(text, full=False)
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>{title}</title>
+<style>
+{TERMINAL_CSS}
+{_converter.produce_headers().replace('<style type="text/css">', '').replace('</style>', '')}
+</style>
+</head>
+<body>
+<div class="terminal-header">{title}</div>
+<div class="terminal-wrap">
+<pre class="ansi2html-content">{body}</pre>
+</div>
+</body>
+</html>"""
+    return html.encode("utf-8")
 
 
 # ---------------------------------------------------------------------------
@@ -244,7 +280,8 @@ def do_capture(host, session, window, pane, formats, scrollback, output_dir):
 
     # html
     if ("html" in formats or "all" in formats) and tty is not None:
-        html = tty_to_html(tty)
+        title = f"{hostname}:{session}:{window}.{pane}"
+        html = tty_to_html(tty, title=title)
         p = out / f"{ts}.html"
         p.write_bytes(html)
         written["html"] = p
@@ -325,7 +362,7 @@ def do_host(path_str, host, session, window, pane, formats, scrollback):
             sys.exit(1)
     else:
         if session is None:
-            session, window, pane = interactive_pick(host, auto_run=True)
+            session, window, pane = interactive_pick(host)
         if window is None:
             window = 0
 
@@ -350,10 +387,10 @@ def do_host(path_str, host, session, window, pane, formats, scrollback):
         sys.exit(1)
 
     gist_url = r.stdout.strip()
-    print(f"\n  gist: {gist_url}")
-
     gist_id = gist_url.rstrip("/").rsplit("/", 1)[-1]
-    print(f"  view: https://gistpreview.github.io/?{gist_id}/{gist_name}")
+
+    print(f"\n  gist:    {gist_url}")
+    print(f"  preview: https://gistpreview.github.io/?{gist_id}/{gist_name}")
 
 
 # ---------------------------------------------------------------------------
