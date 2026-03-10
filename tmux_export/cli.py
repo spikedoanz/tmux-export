@@ -178,6 +178,31 @@ def write_toml(path, data):
     path.write_text("\n".join(lines))
 
 
+def read_toml(path):
+    """Minimal TOML reader for our simple key = value format."""
+    data = {}
+    section = None
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        m = re.match(r'^\[(.+)\]$', line)
+        if m:
+            section = m.group(1)
+            data[section] = {}
+            continue
+        m = re.match(r'^(\w+)\s*=\s*(.+)$', line)
+        if m and section:
+            key = m.group(1)
+            val = m.group(2).strip()
+            if val.startswith('"') and val.endswith('"'):
+                val = val[1:-1]
+            elif val.isdigit():
+                val = int(val)
+            data[section][key] = val
+    return data
+
+
 # ---------------------------------------------------------------------------
 # HTML conversion
 # ---------------------------------------------------------------------------
@@ -324,6 +349,44 @@ def do_capture(host, session, window, pane, formats, scrollback, output_dir, the
 
 
 # ---------------------------------------------------------------------------
+# List exports
+# ---------------------------------------------------------------------------
+
+def do_list():
+    """List all cached exports with metadata."""
+    if not CACHE_DIR.exists():
+        print("no exports yet")
+        return
+
+    tomls = sorted(CACHE_DIR.rglob("*.toml"), reverse=True)
+    if not tomls:
+        print("no exports yet")
+        return
+
+    for t in tomls:
+        meta = read_toml(t)
+        cap = meta.get("capture", {})
+        files = meta.get("files", {})
+
+        host = cap.get("hostname", "?")
+        session = cap.get("session", "?")
+        window = cap.get("window", "?")
+        pane = cap.get("pane", "?")
+        ts = cap.get("timestamp", "?")
+        cmd = cap.get("pane_command", "")
+        dims = f"{cap.get('pane_width', '?')}x{cap.get('pane_height', '?')}"
+        fmts = ",".join(files.keys()) if files else "?"
+
+        # Shorten timestamp
+        if isinstance(ts, str) and "T" in ts:
+            ts = ts.split("T")[0] + " " + ts.split("T")[1][:8]
+
+        target = f"{host}:{session}:{window}.{pane}"
+        print(f"  {ts}  {target:<40} {dims:<10} {cmd:<16} [{fmts}]")
+        print(f"           {t.parent}/")
+
+
+# ---------------------------------------------------------------------------
 # Load utility
 # ---------------------------------------------------------------------------
 
@@ -438,17 +501,24 @@ def main():
     p.add_argument("--output", default=None, help="output directory override")
     p.add_argument("--load", metavar="PATH", default=None,
                    help="load a .txt or .tty export into a tmux window")
+    p.add_argument("--list", action="store_true", default=False,
+                   help="list all cached exports")
     p.add_argument("--host", nargs="?", const="__capture__", default=None, metavar="PATH",
                    help="upload HTML to GitHub Gist (requires gh CLI)")
     p.add_argument("--theme", default=None,
                    help=f"color theme: {', '.join(BUILTIN_THEMES.keys())}, or gogh:<name> (default: {DEFAULT_THEME})")
 
     args = p.parse_args()
-    theme = resolve_theme(args.theme)
+
+    if args.list:
+        do_list()
+        return
 
     if args.load:
         do_load(args.load)
         return
+
+    theme = resolve_theme(args.theme)
 
     if args.host is not None:
         host_path = None if args.host == "__capture__" else args.host
