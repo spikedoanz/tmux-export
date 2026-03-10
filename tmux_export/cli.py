@@ -213,7 +213,6 @@ _converter = None
 def terminal_css(theme):
     bg = theme["bg"]
     fg = theme["fg"]
-    # Derive header bg slightly darker than main bg
     return f"""\
 html, body {{
   margin: 0; padding: 0;
@@ -229,14 +228,6 @@ html, body {{
 }}
 .terminal-wrap .ansi2html-content {{
   white-space: pre;
-}}
-.terminal-header {{
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  font-size: 11px;
-  color: #888;
-  padding: 8px 16px;
-  border-bottom: 1px solid #333;
-  background: {bg};
 }}
 """
 
@@ -262,7 +253,6 @@ def tty_to_html(tty_bytes, title="tmux-export", theme=None):
 </style>
 </head>
 <body>
-<div class="terminal-header">{title}</div>
 <div class="terminal-wrap">
 <pre class="ansi2html-content">{body}</pre>
 </div>
