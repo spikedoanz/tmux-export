@@ -12,6 +12,10 @@ from pathlib import Path
 
 from ansi2html import Ansi2HTMLConverter
 
+from tmux_export.themes import (
+    BUILTIN_THEMES, DEFAULT_THEME, resolve_theme, theme_css,
+)
+
 CACHE_DIR = Path.home() / ".cache" / "tmux-export"
 
 
@@ -180,47 +184,56 @@ def write_toml(path, data):
 
 _converter = None
 
-TERMINAL_CSS = """\
-html, body {
+
+def terminal_css(theme):
+    bg = theme["bg"]
+    fg = theme["fg"]
+    # Derive header bg slightly darker than main bg
+    return f"""\
+html, body {{
   margin: 0; padding: 0;
-  background: #1a1a1a;
-  color: #d4d4d4;
-}
-.terminal-wrap {
+  background: {bg};
+  color: {fg};
+}}
+.terminal-wrap {{
   font-family: 'JetBrains Mono', 'SF Mono', 'Menlo', 'Consolas', 'Liberation Mono', monospace;
   font-size: 13px;
   line-height: 1.18;
   padding: 16px;
   overflow-x: auto;
-}
-.terminal-wrap .ansi2html-content {
+}}
+.terminal-wrap .ansi2html-content {{
   white-space: pre;
-}
-.terminal-header {
+}}
+.terminal-header {{
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   font-size: 11px;
   color: #888;
   padding: 8px 16px;
   border-bottom: 1px solid #333;
-  background: #141414;
-}
+  background: {bg};
+}}
 """
 
 
-def tty_to_html(tty_bytes, title="tmux-export"):
+def tty_to_html(tty_bytes, title="tmux-export", theme=None):
     global _converter
     if _converter is None:
         _converter = Ansi2HTMLConverter(dark_bg=True, scheme="xterm")
+    if theme is None:
+        theme = BUILTIN_THEMES[DEFAULT_THEME]
     text = tty_bytes.decode("utf-8", errors="replace")
     body = _converter.convert(text, full=False)
+    base_css = _converter.produce_headers().replace('<style type="text/css">', '').replace('</style>', '')
     html = f"""<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
 <title>{title}</title>
 <style>
-{TERMINAL_CSS}
-{_converter.produce_headers().replace('<style type="text/css">', '').replace('</style>', '')}
+{terminal_css(theme)}
+{base_css}
+{theme_css(theme)}
 </style>
 </head>
 <body>
@@ -237,7 +250,7 @@ def tty_to_html(tty_bytes, title="tmux-export"):
 # Capture & save
 # ---------------------------------------------------------------------------
 
-def do_capture(host, session, window, pane, formats, scrollback, output_dir):
+def do_capture(host, session, window, pane, formats, scrollback, output_dir, theme=None):
     panes = list_panes(host, session, window)
     pane_info = next((p for p in panes if p["index"] == pane), None)
 
@@ -281,7 +294,7 @@ def do_capture(host, session, window, pane, formats, scrollback, output_dir):
     # html
     if ("html" in formats or "all" in formats) and tty is not None:
         title = f"{hostname}:{session}:{window}.{pane}"
-        html = tty_to_html(tty, title=title)
+        html = tty_to_html(tty, title=title, theme=theme)
         p = out / f"{ts}.html"
         p.write_bytes(html)
         written["html"] = p
@@ -338,7 +351,7 @@ def do_load(path_str):
 # Host (gist) utility
 # ---------------------------------------------------------------------------
 
-def do_host(path_str, host, session, window, pane, formats, scrollback):
+def do_host(path_str, host, session, window, pane, formats, scrollback, theme=None):
     if not shutil.which("gh"):
         print("error: gh CLI not installed (brew install gh)", file=sys.stderr)
         sys.exit(1)
@@ -350,7 +363,7 @@ def do_host(path_str, host, session, window, pane, formats, scrollback):
         if p.suffix == ".html" and p.exists():
             html_path = p
         elif p.suffix == ".tty" and p.exists():
-            html_bytes = tty_to_html(p.read_bytes())
+            html_bytes = tty_to_html(p.read_bytes(), theme=theme)
             html_path = p.with_suffix(".html")
             html_path.write_bytes(html_bytes)
             print(f"  converted {p.name} -> {html_path.name}")
@@ -367,14 +380,14 @@ def do_host(path_str, host, session, window, pane, formats, scrollback):
             window = 0
 
         print(f"capturing {host or 'local'}:{session}:{window}.{pane}")
-        out, ts, written = do_capture(host, session, window, pane, formats, scrollback, None)
+        out, ts, written = do_capture(host, session, window, pane, formats, scrollback, None, theme=theme)
 
         if "html" in written:
             html_path = written["html"]
         else:
             tty = capture_pane(host, session, window, pane, escape_codes=True, scrollback=scrollback)
             html_path = out / f"{ts}.html"
-            html_path.write_bytes(tty_to_html(tty))
+            html_path.write_bytes(tty_to_html(tty, theme=theme))
 
     gist_name = html_path.name
 
@@ -427,8 +440,11 @@ def main():
                    help="load a .txt or .tty export into a tmux window")
     p.add_argument("--host", nargs="?", const="__capture__", default=None, metavar="PATH",
                    help="upload HTML to GitHub Gist (requires gh CLI)")
+    p.add_argument("--theme", default=None,
+                   help=f"color theme: {', '.join(BUILTIN_THEMES.keys())}, or gogh:<name> (default: {DEFAULT_THEME})")
 
     args = p.parse_args()
+    theme = resolve_theme(args.theme)
 
     if args.load:
         do_load(args.load)
@@ -446,7 +462,7 @@ def main():
             else:
                 host = args.target
         formats = set(args.format.split(","))
-        do_host(host_path, host, session, window, pane, formats, args.scrollback)
+        do_host(host_path, host, session, window, pane, formats, args.scrollback, theme=theme)
         return
 
     host = None
@@ -470,7 +486,7 @@ def main():
     output_dir = Path(args.output) if args.output else None
 
     print(f"capturing {host or 'local'}:{session}:{window}.{pane}")
-    do_capture(host, session, window, pane, formats, args.scrollback, output_dir)
+    do_capture(host, session, window, pane, formats, args.scrollback, output_dir, theme=theme)
 
 
 if __name__ == "__main__":
