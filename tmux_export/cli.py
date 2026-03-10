@@ -465,8 +465,8 @@ def do_host(path_str, host, session, window, pane, formats, scrollback, theme=No
     gist_url = r.stdout.strip()
     gist_id = gist_url.rstrip("/").rsplit("/", 1)[-1]
 
-    print(f"\n  gist:    {gist_url}")
-    print(f"  preview: https://gistpreview.github.io/?{gist_id}/{gist_name}")
+    print(f"\n  raw html:  {gist_url}")
+    print(f"  hosted on: https://gistpreview.github.io/?{gist_id}/{gist_name}")
 
 
 # ---------------------------------------------------------------------------
@@ -556,7 +556,19 @@ def main():
     output_dir = Path(args.output) if args.output else None
 
     print(f"capturing {host or 'local'}:{session}:{window}.{pane}")
-    do_capture(host, session, window, pane, formats, args.scrollback, output_dir, theme=theme)
+    out, ts, written = do_capture(host, session, window, pane, formats, args.scrollback, output_dir, theme=theme)
+
+    # Offer to host if html was generated
+    if "html" in written:
+        try:
+            ans = input("\n[h] to upload as gist (needs gh cli), [enter] to finish: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            return
+        if ans == "h":
+            if not shutil.which("gh"):
+                print("  gh CLI not installed (brew install gh)", file=sys.stderr)
+            else:
+                do_host(str(written["html"]), host, session, window, pane, formats, args.scrollback, theme=theme)
 
 
 if __name__ == "__main__":
