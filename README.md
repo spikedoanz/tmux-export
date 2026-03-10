@@ -1,6 +1,6 @@
 # tmux-export
 
-Capture tmux panes as txt, tty, or html. Works over SSH. Built for sharing LLM agent sessions.
+Capture tmux panes as txt, tty, or html. Works over SSH.
 
 ## Quick start
 
@@ -19,6 +19,9 @@ uvx tmux-export -s my-session -w 0 -p 0 --host
 
 # Load export into local tmux window
 uvx tmux-export --load path/to/export.tty
+
+# or just
+cat path/to/export.tty
 ```
 
 ## Options
